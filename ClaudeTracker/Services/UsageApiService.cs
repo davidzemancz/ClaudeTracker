@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using ClaudeTracker.Models;
 
@@ -113,6 +115,14 @@ public class UsageApiService : IDisposable
 
     private static async Task<CredentialsFile?> ReadCredentialsAsync()
     {
+        // On macOS, try reading from Keychain first
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            var keychainCreds = ReadFromKeychain();
+            if (keychainCreds != null) return keychainCreds;
+        }
+
+        // Fall back to file-based credentials (Windows or if Keychain read fails)
         if (!File.Exists(CredentialsPath)) return null;
 
         await using var stream = new FileStream(CredentialsPath,
@@ -120,10 +130,85 @@ public class UsageApiService : IDisposable
         return await JsonSerializer.DeserializeAsync<CredentialsFile>(stream);
     }
 
+    private static CredentialsFile? ReadFromKeychain()
+    {
+        try
+        {
+            var username = Environment.UserName;
+            var psi = new ProcessStartInfo
+            {
+                FileName = "security",
+                Arguments = $"find-generic-password -s \"Claude Code-credentials\" -a \"{username}\" -w",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(psi);
+            if (process == null) return null;
+
+            var output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit(5000);
+
+            if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output)) return null;
+
+            return JsonSerializer.Deserialize<CredentialsFile>(output.Trim());
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static async Task SaveCredentialsAsync(CredentialsFile creds)
     {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            SaveToKeychain(creds);
+            return;
+        }
+
         var json = JsonSerializer.Serialize(creds, new JsonSerializerOptions { WriteIndented = true });
         await File.WriteAllTextAsync(CredentialsPath, json);
+    }
+
+    private static void SaveToKeychain(CredentialsFile creds)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(creds);
+            var username = Environment.UserName;
+
+            // Delete existing entry first, then add updated one
+            var deletePsi = new ProcessStartInfo
+            {
+                FileName = "security",
+                Arguments = $"delete-generic-password -s \"Claude Code-credentials\" -a \"{username}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using (var deleteProc = Process.Start(deletePsi))
+                deleteProc?.WaitForExit(5000);
+
+            var addPsi = new ProcessStartInfo
+            {
+                FileName = "security",
+                Arguments = $"add-generic-password -s \"Claude Code-credentials\" -a \"{username}\" -w \"{json.Replace("\"", "\\\"")}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var addProc = Process.Start(addPsi);
+            addProc?.WaitForExit(5000);
+        }
+        catch
+        {
+            // Silently fail - next fetch will re-read from Keychain
+        }
     }
 
     public void Dispose()
