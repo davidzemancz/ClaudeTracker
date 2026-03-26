@@ -1,4 +1,5 @@
 using System.IO;
+using Avalonia.Threading;
 
 namespace ClaudeTracker.Services;
 
@@ -48,8 +49,7 @@ public class StatsFileWatcher : IDisposable
         _statsDebounce?.Dispose();
         _statsDebounce = new System.Threading.Timer(_ =>
         {
-            System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
-                _dataService.ReloadStats());
+            Dispatcher.UIThread.Post(() => _dataService.ReloadStats());
         }, null, 500, Timeout.Infinite);
     }
 
@@ -58,8 +58,7 @@ public class StatsFileWatcher : IDisposable
         _sessionsDebounce?.Dispose();
         _sessionsDebounce = new System.Threading.Timer(_ =>
         {
-            System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
-                _dataService.ReloadSessions());
+            Dispatcher.UIThread.Post(() => _dataService.ReloadSessions());
         }, null, 500, Timeout.Infinite);
     }
 

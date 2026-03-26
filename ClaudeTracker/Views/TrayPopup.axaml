@@ -1,15 +1,11 @@
-<UserControl x:Class="ClaudeTracker.Views.TrayPopup"
-             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:ClaudeTracker.Views">
+             xmlns:conv="clr-namespace:ClaudeTracker.Converters"
+             x:Class="ClaudeTracker.Views.TrayPopup">
     <UserControl.Resources>
-        <ResourceDictionary>
-            <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="/Themes/DarkTheme.xaml" />
-            </ResourceDictionary.MergedDictionaries>
-            <local:PercentToWidthConverter x:Key="PercentToWidth" />
-            <local:PercentToColorConverter x:Key="PercentToColor" />
-        </ResourceDictionary>
+        <conv:PercentToWidthConverter x:Key="PercentToWidth" />
+        <conv:PercentToColorConverter x:Key="PercentToColor" />
+        <conv:StringToVisibilityConverter x:Key="StringToVisibility" />
     </UserControl.Resources>
 
     <Border Background="{StaticResource BackgroundBrush}"
@@ -28,11 +24,7 @@
                        Foreground="{StaticResource TextSecondaryBrush}"
                        FontSize="10" FontWeight="SemiBold"
                        Margin="0,0,0,4" />
-            <Grid Margin="0,0,0,2">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+            <Grid Margin="0,0,0,2" ColumnDefinitions="*,Auto">
                 <!-- Progress bar -->
                 <Border Grid.Column="0" Background="{StaticResource BarTrackBrush}"
                         CornerRadius="4" Height="14" Margin="0,0,8,0">
@@ -45,20 +37,17 @@
                            Foreground="{StaticResource TextPrimaryBrush}"
                            FontSize="12" FontWeight="Bold" VerticalAlignment="Center" Width="36" />
             </Grid>
-            <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" Margin="0,0,0,10">
-                <Run Text="Resets in " /><Run Text="{Binding FiveHourResetText, Mode=OneWay}" />
-            </TextBlock>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                <TextBlock Text="Resets in " Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" />
+                <TextBlock Text="{Binding FiveHourResetText}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" />
+            </StackPanel>
 
             <!-- 7-Day Window -->
             <TextBlock Text="WEEKLY (7-DAY)"
                        Foreground="{StaticResource TextSecondaryBrush}"
                        FontSize="10" FontWeight="SemiBold"
                        Margin="0,0,0,4" />
-            <Grid Margin="0,0,0,2">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+            <Grid Margin="0,0,0,2" ColumnDefinitions="*,Auto">
                 <Border Grid.Column="0" Background="{StaticResource BarTrackBrush}"
                         CornerRadius="4" Height="14" Margin="0,0,8,0">
                     <Border CornerRadius="4" HorizontalAlignment="Left"
@@ -70,9 +59,10 @@
                            Foreground="{StaticResource TextPrimaryBrush}"
                            FontSize="12" FontWeight="Bold" VerticalAlignment="Center" Width="36" />
             </Grid>
-            <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" Margin="0,0,0,10">
-                <Run Text="Resets in " /><Run Text="{Binding SevenDayResetText, Mode=OneWay}" />
-            </TextBlock>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                <TextBlock Text="Resets in " Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" />
+                <TextBlock Text="{Binding SevenDayResetText}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" />
+            </StackPanel>
 
             <!-- Separator -->
             <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,2,0,10" />
@@ -82,7 +72,7 @@
                 <Ellipse Width="8" Height="8" Fill="{StaticResource GreenBrush}"
                          VerticalAlignment="Center" Margin="0,0,6,0" />
                 <TextBlock Foreground="{StaticResource TextPrimaryBrush}" FontSize="12">
-                    <Run Text="{Binding ActiveSessions, Mode=OneWay}" />
+                    <Run Text="{Binding ActiveSessions}" />
                     <Run Text=" active sessions" />
                 </TextBlock>
             </StackPanel>
@@ -91,23 +81,16 @@
             <TextBlock Text="{Binding ErrorText}"
                        Foreground="{StaticResource RedBrush}"
                        FontSize="9" Margin="0,0,0,4"
-                       Visibility="{Binding ErrorText, Converter={local:StringToVisibilityConverter}}" />
+                       IsVisible="{Binding ErrorText, Converter={StaticResource StringToVisibility}}" />
 
             <!-- Last update -->
-            <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="9" Margin="0,0,0,8">
-                <Run Text="Updated: " /><Run Text="{Binding LastUpdateText, Mode=OneWay}" />
-            </TextBlock>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <TextBlock Text="Updated: " Foreground="{StaticResource TextSecondaryBrush}" FontSize="9" />
+                <TextBlock Text="{Binding LastUpdateText}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="9" />
+            </StackPanel>
 
             <!-- Buttons -->
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
                 <Button Grid.Column="0" Content="Float" Command="{Binding FloatCommand}"
                         Background="{StaticResource SurfaceBrush}" Foreground="{StaticResource TextPrimaryBrush}"
                         BorderBrush="{StaticResource BorderBrush}" Padding="12,4" Cursor="Hand" Margin="0,0,6,0" />

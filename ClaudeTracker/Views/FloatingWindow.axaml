@@ -1,21 +1,16 @@
-<Window x:Class="ClaudeTracker.Views.FloatingWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:local="clr-namespace:ClaudeTracker.Views"
+        xmlns:conv="clr-namespace:ClaudeTracker.Converters"
+        x:Class="ClaudeTracker.Views.FloatingWindow"
         Title="Claude Tracker"
-        Width="260" Height="100" SizeToContent="Height"
-        WindowStyle="None" AllowsTransparency="True"
+        Width="260" SizeToContent="Height"
+        SystemDecorations="None"
+        TransparencyLevelHint="Transparent"
         Background="Transparent" Topmost="True"
-        ResizeMode="NoResize" ShowInTaskbar="False"
-        MouseLeftButtonDown="Window_MouseLeftButtonDown">
+        CanResize="False" ShowInTaskbar="False">
     <Window.Resources>
-        <ResourceDictionary>
-            <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="/Themes/DarkTheme.xaml" />
-            </ResourceDictionary.MergedDictionaries>
-            <local:PercentToWidthConverter x:Key="PercentToWidth" />
-            <local:PercentToColorConverter x:Key="PercentToColor" />
-        </ResourceDictionary>
+        <conv:PercentToWidthConverter x:Key="PercentToWidth" />
+        <conv:PercentToColorConverter x:Key="PercentToColor" />
     </Window.Resources>
 
     <Border Background="#DD1E1E2E" CornerRadius="10"
@@ -42,13 +37,7 @@
             </Grid>
 
             <!-- 5h bar -->
-            <Grid Margin="0,0,0,4">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="24" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="36" />
-                    <ColumnDefinition Width="36" />
-                </Grid.ColumnDefinitions>
+            <Grid Margin="0,0,0,4" ColumnDefinitions="24,*,36,36">
                 <TextBlock Grid.Column="0" Text="5h" Foreground="{StaticResource TextSecondaryBrush}"
                            FontSize="10" VerticalAlignment="Center" />
                 <Border Grid.Column="1" Background="{StaticResource BarTrackBrush}"
@@ -66,13 +55,7 @@
             </Grid>
 
             <!-- 7d bar -->
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="24" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="36" />
-                    <ColumnDefinition Width="36" />
-                </Grid.ColumnDefinitions>
+            <Grid ColumnDefinitions="24,*,36,36">
                 <TextBlock Grid.Column="0" Text="7d" Foreground="{StaticResource TextSecondaryBrush}"
                            FontSize="10" VerticalAlignment="Center" />
                 <Border Grid.Column="1" Background="{StaticResource BarTrackBrush}"

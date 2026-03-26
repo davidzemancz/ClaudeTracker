@@ -1,45 +1,53 @@
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Text;
 using System.IO;
-using System.Windows;
-using System.Windows.Threading;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using ClaudeTracker.Services;
 using ClaudeTracker.ViewModels;
 using ClaudeTracker.Views;
-using Hardcodet.Wpf.TaskbarNotification;
 
 namespace ClaudeTracker;
 
 public partial class App : Application
 {
-    private TaskbarIcon? _trayIcon;
     private StatsDataService? _statsService;
     private UsageApiService? _usageService;
     private StatsFileWatcher? _fileWatcher;
+    private IAutoStartService? _autoStartService;
     private DispatcherTimer? _apiPollTimer;
     private DispatcherTimer? _fallbackPollTimer;
     private TrayViewModel? _trayViewModel;
     private FloatingWindow? _floatingWindow;
+    private TrayIcon? _trayIcon;
     private Mutex? _singleInstanceMutex;
 
-    protected override async void OnStartup(StartupEventArgs e)
+    public override void Initialize()
     {
-        base.OnStartup(e);
+        Avalonia.Markup.Xaml.AvaloniaXamlLoader.Load(this);
+    }
+
+    public override async void OnFrameworkInitializationCompleted()
+    {
+        base.OnFrameworkInitializationCompleted();
 
         // Single instance guard
         _singleInstanceMutex = new Mutex(true, "ClaudeTrackerSingleInstance", out bool createdNew);
         if (!createdNew)
         {
-            MessageBox.Show("Claude Tracker is already running.", "Claude Tracker",
-                MessageBoxButton.OK, MessageBoxImage.Information);
-            Shutdown();
+            if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+                desktop.Shutdown();
             return;
         }
 
         // Initialize services
         _statsService = new StatsDataService();
         _usageService = new UsageApiService();
+        _autoStartService = OperatingSystem.IsMacOS()
+            ? new MacAutoStartService()
+            : new WindowsAutoStartService();
 
         _statsService.ReloadStats();
         _statsService.ReloadSessions();
@@ -48,19 +56,14 @@ public partial class App : Application
         _fileWatcher = new StatsFileWatcher(_statsService);
 
         // Create view model
-        _trayViewModel = new TrayViewModel(_statsService, _usageService);
+        _trayViewModel = new TrayViewModel(_statsService, _usageService, _autoStartService);
         _trayViewModel.FloatRequested += ToggleFloatingWindow;
 
         // Subscribe to usage updates to refresh the tray icon
         _usageService.UsageUpdated += UpdateTrayIcon;
 
         // Create tray icon
-        var popup = new TrayPopup { DataContext = _trayViewModel };
-        _trayIcon = new TaskbarIcon
-        {
-            ToolTipText = "Claude Code Tracker",
-            TrayPopup = popup
-        };
+        SetupTrayIcon();
         UpdateTrayIcon();
 
         // API polling timer (every 150 seconds)
@@ -79,6 +82,44 @@ public partial class App : Application
 
         // Initial API fetch
         await _usageService.FetchUsageAsync();
+    }
+
+    private void SetupTrayIcon()
+    {
+        var menu = new NativeMenu();
+
+        var statsItem = new NativeMenuItem { Header = "Claude Code Tracker", IsEnabled = false };
+        menu.Items.Add(statsItem);
+        menu.Items.Add(new NativeMenuItemSeparator());
+
+        var floatItem = new NativeMenuItem { Header = "Float" };
+        floatItem.Click += (_, _) => ToggleFloatingWindow();
+        menu.Items.Add(floatItem);
+
+        var refreshItem = new NativeMenuItem { Header = "Refresh" };
+        refreshItem.Click += async (_, _) => await _usageService!.FetchUsageAsync();
+        menu.Items.Add(refreshItem);
+
+        menu.Items.Add(new NativeMenuItemSeparator());
+
+        var exitItem = new NativeMenuItem { Header = "Exit" };
+        exitItem.Click += (_, _) =>
+        {
+            if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+                desktop.Shutdown();
+        };
+        menu.Items.Add(exitItem);
+
+        _trayIcon = new TrayIcon
+        {
+            ToolTipText = "Claude Code Tracker",
+            Menu = menu,
+            IsVisible = true
+        };
+
+        // On Windows, clicking the tray icon toggles the popup window
+        // On macOS, Clicked is not supported - users use the NativeMenu instead
+        _trayIcon.Clicked += (_, _) => ToggleFloatingWindow();
     }
 
     private void ToggleFloatingWindow()
@@ -106,44 +147,17 @@ public partial class App : Application
         if (_trayIcon == null || _trayViewModel == null) return;
 
         var percent = _trayViewModel.GetIconPercent();
-        _trayIcon.Icon = CreatePercentIcon(percent);
+        _trayIcon.Icon = new WindowIcon(IconGenerator.CreatePercentIcon(percent));
         _trayIcon.ToolTipText = _trayViewModel.GetTooltipText();
+
+        // Update the stats line in the native menu
+        if (_trayIcon.Menu?.Items.Count > 0 && _trayIcon.Menu.Items[0] is NativeMenuItem statsItem)
+        {
+            statsItem.Header = $"{percent:F0}% (5h) | {_trayViewModel.SevenDayPercent:F0}% (7d)";
+        }
     }
 
-    private static System.Drawing.Icon CreatePercentIcon(double percent)
-    {
-        using var bmp = new Bitmap(16, 16);
-        using var g = Graphics.FromImage(bmp);
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
-
-        // Background color based on percent
-        var bgColor = percent switch
-        {
-            < 50 => Color.FromArgb(76, 175, 80),    // Green
-            < 80 => Color.FromArgb(255, 193, 7),     // Yellow
-            _ => Color.FromArgb(244, 67, 54)          // Red
-        };
-
-        using var bgBrush = new SolidBrush(bgColor);
-        g.FillRectangle(bgBrush, 0, 0, 16, 16);
-
-        // Text
-        var text = $"{percent:F0}";
-        using var font = new Font("Segoe UI", text.Length > 2 ? 6.5f : 8f, System.Drawing.FontStyle.Bold);
-        using var textBrush = new SolidBrush(Color.White);
-        using var sf = new StringFormat
-        {
-            Alignment = StringAlignment.Center,
-            LineAlignment = StringAlignment.Center
-        };
-        g.DrawString(text, font, textBrush, new RectangleF(0, 0, 16, 16), sf);
-
-        var handle = bmp.GetHicon();
-        return System.Drawing.Icon.FromHandle(handle);
-    }
-
-    protected override void OnExit(ExitEventArgs e)
+    private void OnExit()
     {
         _apiPollTimer?.Stop();
         _fallbackPollTimer?.Stop();
@@ -152,6 +166,5 @@ public partial class App : Application
         _trayIcon?.Dispose();
         _singleInstanceMutex?.Dispose();
         _floatingWindow?.Close();
-        base.OnExit(e);
     }
 }

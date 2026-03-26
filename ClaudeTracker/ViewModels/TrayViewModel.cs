@@ -1,7 +1,7 @@
-using System.Windows;
 using System.Windows.Input;
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
 using ClaudeTracker.Services;
-using Microsoft.Win32;
 
 namespace ClaudeTracker.ViewModels;
 
@@ -9,6 +9,7 @@ public class TrayViewModel : ViewModelBase
 {
     private readonly StatsDataService _statsService;
     private readonly UsageApiService _usageService;
+    private readonly IAutoStartService _autoStartService;
 
     // Rate limits
     private double _fiveHourPercent;
@@ -54,7 +55,7 @@ public class TrayViewModel : ViewModelBase
         set
         {
             if (SetField(ref _startWithWindows, value))
-                SetAutoStart(value);
+                _autoStartService.SetEnabled(value);
         }
     }
 
@@ -64,22 +65,27 @@ public class TrayViewModel : ViewModelBase
 
     public event Action? FloatRequested;
 
-    public TrayViewModel(StatsDataService statsService, UsageApiService usageService)
+    public TrayViewModel(StatsDataService statsService, UsageApiService usageService, IAutoStartService autoStartService)
     {
         _statsService = statsService;
         _usageService = usageService;
+        _autoStartService = autoStartService;
 
         _statsService.DataChanged += RefreshLocalStats;
         _usageService.UsageUpdated += RefreshUsageData;
 
         FloatCommand = new RelayCommand(() => FloatRequested?.Invoke());
-        ExitCommand = new RelayCommand(() => Application.Current.Shutdown());
+        ExitCommand = new RelayCommand(() =>
+        {
+            if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+                desktop.Shutdown();
+        });
         RefreshCommand = new RelayCommand(async () => await _usageService.FetchUsageAsync());
 
         // Enable autostart by default on first run
-        if (!IsAutoStartEnabled())
-            SetAutoStart(true);
-        _startWithWindows = IsAutoStartEnabled();
+        if (!_autoStartService.IsEnabled())
+            _autoStartService.SetEnabled(true);
+        _startWithWindows = _autoStartService.IsEnabled();
 
         RefreshLocalStats();
         RefreshUsageData();
@@ -151,29 +157,4 @@ public class TrayViewModel : ViewModelBase
     }
 
     public double GetIconPercent() => FiveHourPercent;
-
-    private const string AutoStartKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
-    private const string AppName = "ClaudeTracker";
-
-    private static bool IsAutoStartEnabled()
-    {
-        using var key = Registry.CurrentUser.OpenSubKey(AutoStartKey, false);
-        return key?.GetValue(AppName) != null;
-    }
-
-    private static void SetAutoStart(bool enable)
-    {
-        using var key = Registry.CurrentUser.OpenSubKey(AutoStartKey, true);
-        if (key == null) return;
-
-        if (enable)
-        {
-            var exePath = Environment.ProcessPath ?? "";
-            key.SetValue(AppName, $"\"{exePath}\"");
-        }
-        else
-        {
-            key.DeleteValue(AppName, false);
-        }
-    }
 }
