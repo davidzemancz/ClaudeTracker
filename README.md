@@ -1,9 +1,11 @@
 # ClaudeTracker
 
-Windows system tray widget for monitoring your Claude Code rate limit usage.
+Cross-platform system tray widget for monitoring your Claude Code rate limit usage. Built with Avalonia UI.
 
 ![.NET 10](https://img.shields.io/badge/.NET-10-blue)
+![Avalonia UI](https://img.shields.io/badge/Avalonia-11.3-blue)
 ![Windows](https://img.shields.io/badge/platform-Windows-lightgrey)
+![macOS](https://img.shields.io/badge/platform-macOS-lightgrey)
 
 ## What it does
 
@@ -12,7 +14,7 @@ Windows system tray widget for monitoring your Claude Code rate limit usage.
 - Click the tray icon for a popup with progress bars and reset times
 - Optional **floating always-on-top** mini window
 - Tracks active Claude Code sessions
-- **Auto-starts with Windows** by default
+- **Auto-starts** by default (Windows Registry / macOS LaunchAgent)
 
 ## Quick Setup (with Claude Code)
 
@@ -28,11 +30,13 @@ Then type `/setup` and Claude will build, install and launch it for you.
 
 ### Prerequisites
 
-- Windows 10/11
+- Windows 10/11 or macOS
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
-- Active Claude Code login (`~/.claude/.credentials.json` must exist)
+- Active Claude Code login
 
 ### Build & Run
+
+**Windows:**
 
 ```bash
 dotnet publish ClaudeTracker/ClaudeTracker.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ClaudeTracker/publish
@@ -40,20 +44,25 @@ dotnet publish ClaudeTracker/ClaudeTracker.csproj -c Release -r win-x64 --self-c
 
 Then run `ClaudeTracker/publish/ClaudeTracker.exe`.
 
-### Install permanently
-
-Copy the exe to a permanent location:
+**macOS:**
 
 ```bash
-mkdir "%LOCALAPPDATA%\ClaudeTracker"
-copy ClaudeTracker\publish\ClaudeTracker.exe "%LOCALAPPDATA%\ClaudeTracker\"
+dotnet publish ClaudeTracker/ClaudeTracker.csproj -c Release -r osx-arm64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ClaudeTracker/publish
 ```
 
-The app enables Windows autostart on first launch. You can toggle this in the tray popup.
+Then run `ClaudeTracker/publish/ClaudeTracker`.
+
+### Install permanently
+
+**Windows:** Copy the exe to `%LOCALAPPDATA%\ClaudeTracker\`.
+
+**macOS:** Copy the binary to `~/.local/bin/` or another location on your PATH.
+
+The app enables autostart on first launch. You can toggle this in the tray popup.
 
 ## How it works
 
-- Reads OAuth credentials from `~/.claude/.credentials.json`
+- Reads OAuth credentials from macOS Keychain (`Claude Code-credentials`) or `~/.claude/.credentials.json` as fallback
 - Polls `GET https://api.anthropic.com/api/oauth/usage` every 2.5 minutes
 - Monitors `~/.claude/sessions/` for active Claude Code sessions
 - Handles token refresh automatically
