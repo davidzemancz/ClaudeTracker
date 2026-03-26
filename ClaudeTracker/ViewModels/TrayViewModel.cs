@@ -76,6 +76,9 @@ public class TrayViewModel : ViewModelBase
         ExitCommand = new RelayCommand(() => Application.Current.Shutdown());
         RefreshCommand = new RelayCommand(async () => await _usageService.FetchUsageAsync());
 
+        // Enable autostart by default on first run
+        if (!IsAutoStartEnabled())
+            SetAutoStart(true);
         _startWithWindows = IsAutoStartEnabled();
 
         RefreshLocalStats();
