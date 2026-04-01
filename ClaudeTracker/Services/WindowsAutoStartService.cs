@@ -10,24 +10,38 @@ public class WindowsAutoStartService : IAutoStartService
     public bool IsEnabled()
     {
         if (!OperatingSystem.IsWindows()) return false;
-        using var key = Registry.CurrentUser.OpenSubKey(AutoStartKey, false);
-        return key?.GetValue(AppName) != null;
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(AutoStartKey, false);
+            return key?.GetValue(AppName) != null;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     public void SetEnabled(bool enable)
     {
         if (!OperatingSystem.IsWindows()) return;
-        using var key = Registry.CurrentUser.OpenSubKey(AutoStartKey, true);
-        if (key == null) return;
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(AutoStartKey, true);
 
-        if (enable)
-        {
-            var exePath = Environment.ProcessPath ?? "";
-            key.SetValue(AppName, $"\"{exePath}\"");
+            if (enable)
+            {
+                var exePath = Environment.ProcessPath;
+                if (string.IsNullOrEmpty(exePath)) return;
+                key.SetValue(AppName, $"\"{exePath}\"");
+            }
+            else
+            {
+                key.DeleteValue(AppName, false);
+            }
         }
-        else
+        catch (Exception)
         {
-            key.DeleteValue(AppName, false);
+            // Registry access may fail due to permissions or policy
         }
     }
 }
