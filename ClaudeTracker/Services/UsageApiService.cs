@@ -15,9 +15,6 @@ public class UsageApiService : IDisposable
         ".claude", ".credentials.json");
 
     private const string UsageEndpoint = "https://api.anthropic.com/api/oauth/usage";
-    private const string TokenEndpoint = "https://console.anthropic.com/v1/oauth/token";
-    private const string ClientId = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-
     private readonly HttpClient _httpClient = new();
     private UsageResponse? _cachedUsage;
     private DateTime _lastFetchTime = DateTime.MinValue;
@@ -41,20 +38,13 @@ public class UsageApiService : IDisposable
 
             var oauth = creds.ClaudeAiOauth;
 
-            // Check if token is expired
+            // If token is expired, skip this cycle — let Claude Code handle refresh
             var expiresAt = DateTimeOffset.FromUnixTimeMilliseconds(oauth.ExpiresAt).UtcDateTime;
             if (DateTime.UtcNow >= expiresAt)
             {
-                var refreshed = await RefreshTokenAsync(oauth.RefreshToken);
-                if (refreshed == null)
-                {
-                    LastError = "Token refresh failed";
-                    return;
-                }
-                oauth.AccessToken = refreshed.AccessToken;
-                oauth.RefreshToken = refreshed.RefreshToken;
-                oauth.ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(refreshed.ExpiresIn).ToUnixTimeMilliseconds();
-                await SaveCredentialsAsync(creds);
+                LastError = "Token expired (waiting for Claude Code to refresh)";
+                UsageUpdated?.Invoke();
+                return;
             }
 
             using var request = new HttpRequestMessage(HttpMethod.Get, UsageEndpoint);
@@ -83,33 +73,6 @@ public class UsageApiService : IDisposable
             LastError = ex.Message;
             // Still notify so UI can show error state
             UsageUpdated?.Invoke();
-        }
-    }
-
-    private async Task<TokenRefreshResponse?> RefreshTokenAsync(string refreshToken)
-    {
-        try
-        {
-            var payload = new
-            {
-                grant_type = "refresh_token",
-                refresh_token = refreshToken,
-                client_id = ClientId
-            };
-
-            var content = new StringContent(
-                JsonSerializer.Serialize(payload),
-                System.Text.Encoding.UTF8,
-                "application/json");
-
-            using var response = await _httpClient.PostAsync(TokenEndpoint, content);
-            response.EnsureSuccessStatusCode();
-            var json = await response.Content.ReadAsStringAsync();
-            return JsonSerializer.Deserialize<TokenRefreshResponse>(json);
-        }
-        catch
-        {
-            return null;
         }
     }
 
@@ -158,56 +121,6 @@ public class UsageApiService : IDisposable
         catch
         {
             return null;
-        }
-    }
-
-    private static async Task SaveCredentialsAsync(CredentialsFile creds)
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            SaveToKeychain(creds);
-            return;
-        }
-
-        var json = JsonSerializer.Serialize(creds, new JsonSerializerOptions { WriteIndented = true });
-        await File.WriteAllTextAsync(CredentialsPath, json);
-    }
-
-    private static void SaveToKeychain(CredentialsFile creds)
-    {
-        try
-        {
-            var json = JsonSerializer.Serialize(creds);
-            var username = Environment.UserName;
-
-            // Delete existing entry first, then add updated one
-            var deletePsi = new ProcessStartInfo
-            {
-                FileName = "security",
-                Arguments = $"delete-generic-password -s \"Claude Code-credentials\" -a \"{username}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            using (var deleteProc = Process.Start(deletePsi))
-                deleteProc?.WaitForExit(5000);
-
-            var addPsi = new ProcessStartInfo
-            {
-                FileName = "security",
-                Arguments = $"add-generic-password -s \"Claude Code-credentials\" -a \"{username}\" -w \"{json.Replace("\"", "\\\"")}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            using var addProc = Process.Start(addPsi);
-            addProc?.WaitForExit(5000);
-        }
-        catch
-        {
-            // Silently fail - next fetch will re-read from Keychain
         }
     }
 
