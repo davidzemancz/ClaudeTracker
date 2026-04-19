@@ -18,6 +18,7 @@ public class UsageApiService : IDisposable
     private readonly HttpClient _httpClient = new();
     private UsageResponse? _cachedUsage;
     private DateTime _lastFetchTime = DateTime.MinValue;
+    private CredentialsFile? _cachedCredentials;
 
     public event Action? UsageUpdated;
 
@@ -76,16 +77,29 @@ public class UsageApiService : IDisposable
         }
     }
 
-    private static async Task<CredentialsFile?> ReadCredentialsAsync()
+    private async Task<CredentialsFile?> ReadCredentialsAsync()
     {
         // On macOS, try reading from Keychain first
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
-            var keychainCreds = ReadFromKeychain();
-            if (keychainCreds != null) return keychainCreds;
+            var keychainCreds = await ReadFromKeychainAsync();
+            if (keychainCreds != null)
+            {
+                _cachedCredentials = keychainCreds;
+                return keychainCreds;
+            }
+
+            // Keychain read failed — use cached credentials if available
+            if (_cachedCredentials != null)
+            {
+                LastError = "Keychain read failed, using cached credentials";
+                return _cachedCredentials;
+            }
+
+            return null;
         }
 
-        // Fall back to file-based credentials (Windows or if Keychain read fails)
+        // Fall back to file-based credentials (Windows)
         if (!File.Exists(CredentialsPath)) return null;
 
         await using var stream = new FileStream(CredentialsPath,
@@ -93,35 +107,48 @@ public class UsageApiService : IDisposable
         return await JsonSerializer.DeserializeAsync<CredentialsFile>(stream);
     }
 
-    private static CredentialsFile? ReadFromKeychain()
+    private static async Task<CredentialsFile?> ReadFromKeychainAsync()
     {
-        try
+        // Retry up to 2 times for transient Keychain failures
+        for (var attempt = 0; attempt < 2; attempt++)
         {
-            var username = Environment.UserName;
-            var psi = new ProcessStartInfo
+            try
             {
-                FileName = "security",
-                Arguments = $"find-generic-password -s \"Claude Code-credentials\" -a \"{username}\" -w",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+                var username = Environment.UserName;
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "security",
+                    Arguments = $"find-generic-password -s \"Claude Code-credentials\" -a \"{username}\" -w",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
 
-            using var process = Process.Start(psi);
-            if (process == null) return null;
+                using var process = Process.Start(psi);
+                if (process == null) continue;
 
-            var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(5000);
+                var output = await process.StandardOutput.ReadToEndAsync();
+                var exited = process.WaitForExit(15000);
 
-            if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output)) return null;
+                if (!exited)
+                {
+                    try { process.Kill(); } catch { /* best effort */ }
+                    continue;
+                }
 
-            return JsonSerializer.Deserialize<CredentialsFile>(output.Trim());
+                if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
+                    continue;
+
+                return JsonSerializer.Deserialize<CredentialsFile>(output.Trim());
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Keychain read attempt {attempt + 1} failed: {ex.Message}");
+            }
         }
-        catch
-        {
-            return null;
-        }
+
+        return null;
     }
 
     public void Dispose()
